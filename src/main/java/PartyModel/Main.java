@@ -1,14 +1,17 @@
 package PartyModel;
-import CSV.CSVUtil;
-import PartyModel.Editable;
-import PartyModel.ImportParty;
-import PartyModel.Party;
-import PartyModel.RegularParty;
-import WareHouse.HashTable;
+
+import CSV.CSVLoadException;
 import WareHouse.WareHouse;
+import WareHouse.WarehouseService;
+import WareHouse.WarehouseService.AddResult;
+import WareHouse.WarehouseService.DeleteOutcome;
+import WareHouse.WarehouseService.LoadSummary;
+import WareHouse.WarehouseService.SaveResult;
+
 import javafx.application.Application;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -16,17 +19,19 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+
 import java.io.File;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.Optional;
+import java.io.IOException;
+import java.util.stream.Collectors;
 
 public class Main extends Application {
-    private final WareHouse warehouse = new WareHouse();
+
+    /** Единственная точка доступа к данным — сервис. */
+    private final WarehouseService service = new WarehouseService(new WareHouse());
+
+    private final ObservableList<Party> partyList = FXCollections.observableArrayList();
     private TableView<Party> table;
-    private ObservableList<Party> partyList = FXCollections.observableArrayList();
-    private Button editButton, deleteButton;
+    private Button loadButton, saveButton, addButton, editButton, deleteButton, refreshButton;
     private Label statusLabel, statsLabel;
 
     @Override
@@ -34,145 +39,197 @@ public class Main extends Application {
         stage.setTitle("Склад — учёт партий");
         BorderPane root = new BorderPane();
 
-        // Toolbar
-        ToolBar toolbar = new ToolBar();
-        Button loadBtn = new Button("Загрузить CSV");
-        Button saveBtn = new Button("Сохранить CSV");
-        Button addBtn = new Button("Добавить");
-        editButton = new Button("Изменить");
-        deleteButton = new Button("Удалить");
-        Button refreshBtn = new Button("Обновить");
+        root.setTop(buildToolbar());
+        root.setCenter(buildTable());
+        root.setBottom(buildStatusBar());
 
-        loadBtn.setOnAction(e -> loadCSV());
-        saveBtn.setOnAction(e -> saveCSV());
-        addBtn.setOnAction(e -> addParty());
-        editButton.setOnAction(e -> editParty());
-        deleteButton.setOnAction(e -> deleteParty());
-        refreshBtn.setOnAction(e -> refresh());
-
-        toolbar.getItems().addAll(loadBtn, saveBtn, new Separator(), addBtn, editButton, deleteButton, new Separator(), refreshBtn);
-        root.setTop(toolbar);
-
-        // Table
-        table = new TableView<>(partyList);
-        table.getColumns().addAll(
-                createColumn("Артикул", "article", 100),
-                createColumn("Название", "name", 200),
-                createColumn("Кол-во", "quantity", 80),
-                createColumn("Ячейка", "cell", 80),
-                createColumn("Дата", "dateStr", 100),
-                createColumn("Тип", "typeDisplayName", 120)
-        );
-
-        TableColumn<Party, String> extraCol = new TableColumn<>("Доп. поля");
-        extraCol.setCellValueFactory(c -> {
-            Party p = c.getValue();
-            return new javafx.beans.property.SimpleStringProperty(
-                    p instanceof ImportParty ? "страна=" + ((ImportParty)p).getCountry() : (p instanceof Editable ? "—" : "read-only")
-            );
-        });
-        extraCol.setPrefWidth(200);
-        table.getColumns().add(extraCol);
-
-        table.getSelectionModel().selectedItemProperty().addListener((o, old, val) -> updateButtons());
-        table.setOnMouseClicked(e -> {
-            if (e.getClickCount() == 2 && table.getSelectionModel().getSelectedItem() != null) {
-                Party p = table.getSelectionModel().getSelectedItem();
-                if (p instanceof Editable) editParty();
-                else showAlert("Только чтение", "Архивная партия недоступна для редактирования.");
-            }
-        });
-        root.setCenter(table);
-
-        // Status bar
-        statusLabel = new Label("Готово к работе");
-        statsLabel = new Label();
-        HBox status = new HBox(20, statusLabel, new Region() {{ HBox.setHgrow(this, Priority.ALWAYS); }}, statsLabel);
-        status.setPadding(new Insets(4));
-        root.setBottom(status);
-
-        stage.setScene(new Scene(root, 950, 600));
+        stage.setScene(new Scene(root, AppConstants.WINDOW_WIDTH, AppConstants.WINDOW_HEIGHT));
         stage.show();
+
         refresh();
     }
 
-    private <T> TableColumn<Party, T> createColumn(String title, String prop, double width) {
+    // ---------- Сборка UI ----------
+
+    private ToolBar buildToolbar() {
+        loadButton    = new Button("Загрузить CSV");
+        saveButton    = new Button("Сохранить CSV");
+        addButton     = new Button("Добавить");
+        editButton    = new Button("Изменить");
+        deleteButton  = new Button("Удалить");
+        refreshButton = new Button("Обновить");
+
+        loadButton   .setOnAction(e -> loadCSV());
+        saveButton   .setOnAction(e -> saveCSV());
+        addButton    .setOnAction(e -> addParty());
+        editButton   .setOnAction(e -> editParty());
+        deleteButton .setOnAction(e -> deleteParty());
+        refreshButton.setOnAction(e -> refresh());
+
+        return new ToolBar(loadButton, saveButton, new Separator(),
+                addButton, editButton, deleteButton, new Separator(), refreshButton);
+    }
+
+    private TableView<Party> buildTable() {
+        table = new TableView<>(partyList);
+        table.getColumns().addAll(
+                column("Артикул", "article",         AppConstants.COL_ARTICLE),
+                column("Название","name",            AppConstants.COL_NAME),
+                column("Кол-во",  "quantity",        AppConstants.COL_QTY),
+                column("Ячейка",  "cell",            AppConstants.COL_CELL),
+                column("Дата",    "dateStr",         AppConstants.COL_DATE),
+                column("Тип",     "typeDisplayName", AppConstants.COL_TYPE));
+
+        TableColumn<Party, String> extra = new TableColumn<>("Доп. поля");
+        extra.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(
+                extraInfo(c.getValue())));
+        extra.setPrefWidth(AppConstants.COL_EXTRA);
+        table.getColumns().add(extra);
+
+        table.getSelectionModel().selectedItemProperty()
+                .addListener((o, ov, nv) -> updateButtons());
+
+        table.setRowFactory(tv -> {
+            TableRow<Party> row = new TableRow<>();
+            row.setOnMouseClicked(e -> {
+                if (e.getClickCount() == 2 && !row.isEmpty()) onRowDoubleClick(row.getItem());
+            });
+            return row;
+        });
+        return table;
+    }
+
+    private HBox buildStatusBar() {
+        statusLabel = new Label("Готово к работе");
+        statsLabel  = new Label();
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox bar = new HBox(20, statusLabel, spacer, statsLabel);
+        bar.setPadding(new Insets(4));
+        return bar;
+    }
+
+    private static String extraInfo(Party p) {
+        if (p instanceof ImportParty ip) return "страна=" + ip.getCountry();
+        if (p instanceof Editable)       return "—";
+        return "read-only";
+    }
+
+    private static <T> TableColumn<Party, T> column(String title, String prop, double width) {
         TableColumn<Party, T> col = new TableColumn<>(title);
         col.setCellValueFactory(new PropertyValueFactory<>(prop));
         col.setPrefWidth(width);
         return col;
     }
 
+    // ---------- Состояние ----------
+
     private void updateButtons() {
         Party sel = table.getSelectionModel().getSelectedItem();
-        editButton.setDisable(sel == null || !(sel instanceof Editable));
+        editButton  .setDisable(sel == null || !(sel instanceof Editable));
         deleteButton.setDisable(sel == null);
     }
 
-    private void refresh() {
-        partyList.setAll(warehouse.all());
-        statsLabel.setText(String.format("Записей: %d | Ёмкость: %d | Заполненность: %.1f%% | ср. пробы: put=%.2f, get=%.2f, del=%.2f",
-                warehouse.size(), warehouse.capacity(), warehouse.loadFactor() * 100,
-                warehouse.avgPutProbes(), warehouse.avgGetProbes(), warehouse.avgDeleteProbes()));
+    private void setBusy(boolean busy) {
+        loadButton.setDisable(busy);
+        saveButton.setDisable(busy);
+        addButton.setDisable(busy);
+        refreshButton.setDisable(busy);
+        if (busy) {
+            editButton.setDisable(true);
+            deleteButton.setDisable(true);
+        } else {
+            updateButtons();
+        }
     }
 
+    private void onRowDoubleClick(Party p) {
+        if (p instanceof Editable) editParty();
+        else PartyDialogs.showInfo("Только чтение",
+                "Архивная партия недоступна для редактирования.");
+    }
+
+    private void refresh() {
+        partyList.setAll(service.all());
+        statsLabel.setText(String.format(
+                "Записей: %d | Ёмкость: %d | Заполненность: %.1f%% | ср. пробы: put=%.2f, get=%.2f, del=%.2f",
+                service.size(), service.capacity(), service.loadFactor() * 100,
+                service.avgPutProbes(), service.avgGetProbes(), service.avgDeleteProbes()));
+    }
+
+    // ---------- CSV: загрузка/сохранение ----------
+
     private void loadCSV() {
-        FileChooser fc = new FileChooser();
-        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV", "*.csv"));
-        File file = fc.showOpenDialog(null);
-        if (file != null) {
-            try {
-                CSVUtil.LoadResult result = CSVUtil.load(file.getAbsolutePath());
-                warehouse.clear();
-                int dups = 0;
-                for (Party p : result.parties) {
-                    if (warehouse.get(p.getArticle()).found) dups++;
-                    else warehouse.put(p);
-                }
-                refresh();
-                statusLabel.setText("Загружено: " + warehouse.size() + ", пропущено: " + result.skipped + (dups > 0 ? " (дубликатов: " + dups + ")" : ""));
-                if (result.skipped > 0 || dups > 0) showAlert("Часть строк пропущена", "Загружено: " + warehouse.size() + "\nПропущено: " + result.skipped + "\nДубликатов: " + dups);
-            } catch (Exception ex) {
-                showError("Ошибка загрузки", ex.getMessage());
+        File file = chooseOpenFile();
+        if (file == null) return;
+
+        setBusy(true);
+        Task<LoadSummary> task = new Task<>() {
+            @Override protected LoadSummary call() throws IOException {
+                return service.loadFromFile(file);
             }
+        };
+        task.setOnSucceeded(e -> {
+            setBusy(false);
+            refresh();
+            reportLoad(task.getValue());
+        });
+        task.setOnFailed(e -> {
+            setBusy(false);
+            Throwable ex = task.getException();
+            PartyDialogs.showError("Ошибка загрузки",
+                    ex == null ? "Неизвестная ошибка" : ex.getMessage());
+        });
+        new Thread(task, "csv-load").start();
+    }
+
+    private void reportLoad(LoadSummary s) {
+        String brief = "Загружено: " + s.loaded()
+                + ", дубликатов: " + s.duplicates()
+                + ", ошибок: " + s.errors().size();
+        statusLabel.setText(brief);
+
+        if (s.hasIssues()) {
+            String details = s.errors().stream()
+                    .limit(AppConstants.MAX_ERROR_DETAILS_IN_DIALOG)
+                    .map(CSVLoadException::getMessage)
+                    .collect(Collectors.joining("\n"));
+            PartyDialogs.showInfo("Часть строк пропущена",
+                    brief + (details.isBlank() ? "" : "\n\n" + details));
         }
     }
 
     private void saveCSV() {
-        if (warehouse.size() == 0) {
-            showAlert("Сохранение", "Список пуст.");
+        if (service.size() == 0) {
+            PartyDialogs.showInfo("Сохранение", "Список пуст.");
             return;
         }
-        FileChooser fc = new FileChooser();
-        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV", "*.csv"));
-        File file = fc.showSaveDialog(null);
-        if (file != null) {
-            try {
-                String path = file.getAbsolutePath();
-                if (!path.toLowerCase().endsWith(".csv")) path += ".csv";
-                CSVUtil.save(path, (List<Party>) warehouse.all());
-                statusLabel.setText("Сохранено: " + warehouse.size());
-                showAlert("Сохранение", "Успешно сохранено: " + warehouse.size());
-            } catch (Exception ex) {
-                showError("Ошибка сохранения", ex.getMessage());
-            }
+        File file = chooseSaveFile();
+        if (file == null) return;
+
+        try {
+            SaveResult r = service.saveToFile(file);
+            statusLabel.setText("Сохранено: " + r.saved());
+            PartyDialogs.showInfo("Сохранение", "Успешно сохранено: " + r.saved());
+        } catch (IOException ex) {
+            PartyDialogs.showError("Ошибка сохранения", ex.getMessage());
         }
     }
 
+    // ---------- CRUD ----------
+
     private void addParty() {
-        ChoiceDialog<String> dlg = new ChoiceDialog<>("Партия (базовая)", "Партия (базовая)", "Импортная партия");
-        dlg.setTitle("Добавить партию");
-        dlg.setHeaderText("Выберите тип:");
-        dlg.showAndWait().ifPresent(type -> {
-            boolean importMode = type.contains("Импортная");
-            showPartyDialog(importMode ? "Добавить импортную" : "Добавить партию", null, importMode).ifPresent(p -> {
-                if (warehouse.get(p.getArticle()).found) {
-                    showError("Дубликат", "Партия «" + p.getArticle() + "» уже существует.");
+        PartyDialogs.chooseAddType().ifPresent(importMode -> {
+            String title = importMode ? "Добавить импортную" : "Добавить партию";
+            PartyDialogs.showPartyForm(title, null, importMode).ifPresent(p -> {
+                AddResult r = service.addParty(p);
+                if (r.wasDuplicate()) {
+                    PartyDialogs.showError("Дубликат",
+                            String.format(AppConstants.Validation.DUPLICATE_MSG_FORMAT, p.getArticle()));
                     return;
                 }
-                HashTable.PutResult res = warehouse.put(p);
                 refresh();
-                statusLabel.setText("Добавлено: " + p.getArticle() + " | пробы: " + res.probes);
+                statusLabel.setText("Добавлено: " + p.getArticle() + " | пробы: " + r.probes());
             });
         });
     }
@@ -181,94 +238,41 @@ public class Main extends Application {
         Party p = table.getSelectionModel().getSelectedItem();
         if (p == null) return;
         if (!(p instanceof Editable)) {
-            showError("Недоступно", "Архивная партия только для чтения.");
+            PartyDialogs.showError("Недоступно", "Архивная партия только для чтения.");
             return;
         }
         boolean importMode = p instanceof ImportParty;
-        showPartyDialog(importMode ? "Изменить импортную" : "Изменить партию", p, importMode).ifPresent(updated -> {
-            warehouse.put(updated);
+        String title = importMode ? "Изменить импортную" : "Изменить партию";
+        PartyDialogs.showPartyForm(title, p, importMode).ifPresent(updated -> {
+            AddResult r = service.updateParty(updated);
             refresh();
-            statusLabel.setText("Изменено: " + updated.getArticle());
+            statusLabel.setText("Изменено: " + updated.getArticle() + " | пробы: " + r.probes());
         });
     }
 
     private void deleteParty() {
         Party p = table.getSelectionModel().getSelectedItem();
         if (p == null) return;
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "Удалить «" + p.getArticle() + "»?", ButtonType.YES, ButtonType.NO);
-        confirm.showAndWait().filter(r -> r == ButtonType.YES).ifPresent(r -> {
-            HashTable.DeleteResult res = warehouse.delete(p.getArticle());
-            refresh();
-            statusLabel.setText("Удалено: " + p.getArticle() + " | пробы: " + res.probes);
-        });
+        if (!PartyDialogs.confirmDelete(p.getArticle())) return;
+        DeleteOutcome o = service.deleteByArticle(p.getArticle());
+        refresh();
+        statusLabel.setText("Удалено: " + o.article() + " | пробы: " + o.probes());
     }
 
-    private Optional<Party> showPartyDialog(String title, Party existing, boolean importMode) {
-        Dialog<Party> dialog = new Dialog<>();
-        dialog.setTitle(title);
+    // ---------- FileChooser ----------
 
-        TextField article = new TextField(), name = new TextField(), qty = new TextField(), cell = new TextField(), date = new TextField();
-        TextField country = new TextField(), customs = new TextField();
-
-        if (existing != null) {
-            article.setText(existing.getArticle());
-            article.setEditable(false);
-            name.setText(existing.getName());
-            qty.setText(String.valueOf(existing.getQuantity()));
-            cell.setText(existing.getCell());
-            date.setText(existing.getDateStr());
-            if (existing instanceof ImportParty) {
-                country.setText(((ImportParty)existing).getCountry());
-                customs.setText(((ImportParty)existing).getCustomsCode());
-            }
-        }
-
-        GridPane grid = new GridPane();
-        grid.setHgap(10); grid.setVgap(10); grid.setPadding(new Insets(20));
-        int row = 0;
-        grid.add(new Label("Артикул:"), 0, row); grid.add(article, 1, row++);
-        grid.add(new Label("Название:"), 0, row); grid.add(name, 1, row++);
-        grid.add(new Label("Количество:"), 0, row); grid.add(qty, 1, row++);
-        grid.add(new Label("Ячейка:"), 0, row); grid.add(cell, 1, row++);
-        grid.add(new Label("Дата:"), 0, row); grid.add(date, 1, row++);
-
-        if (importMode) {
-            grid.add(new Label("Страна:"), 0, row); grid.add(country, 1, row++);
-            grid.add(new Label("Тамож. код:"), 0, row); grid.add(customs, 1, row++);
-        }
-
-        dialog.getDialogPane().setContent(grid);
-        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
-
-        dialog.setResultConverter(btn -> {
-            if (btn != ButtonType.OK) return null;
-            try {
-                if (article.getText().trim().isEmpty()) throw new RuntimeException("Артикул пуст");
-                int q = Integer.parseInt(qty.getText().trim());
-                if (q < 0) throw new RuntimeException();
-                LocalDate.parse(date.getText().trim(), DateTimeFormatter.ISO_LOCAL_DATE);
-                if (importMode && (country.getText().trim().isEmpty() || customs.getText().trim().isEmpty())) {
-                    throw new RuntimeException("Заполните страну и код");
-                }
-                return importMode ? new ImportParty(article.getText().trim(), name.getText().trim(), q, cell.getText().trim(),
-                        LocalDate.parse(date.getText().trim(), DateTimeFormatter.ISO_LOCAL_DATE), country.getText().trim(), customs.getText().trim())
-                        : new RegularParty(article.getText().trim(), name.getText().trim(), q, cell.getText().trim(),
-                        LocalDate.parse(date.getText().trim(), DateTimeFormatter.ISO_LOCAL_DATE));
-            } catch (Exception e) {
-                showError("Ошибка ввода", e.getMessage().isEmpty() ? "Неверный формат" : e.getMessage());
-                return null;
-            }
-        });
-
-        return dialog.showAndWait();
+    private File chooseOpenFile() {
+        FileChooser fc = new FileChooser();
+        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter(
+                "CSV", "*" + AppConstants.CSV_EXTENSION));
+        return fc.showOpenDialog(null);
     }
 
-    private void showAlert(String title, String msg) {
-        new Alert(Alert.AlertType.INFORMATION, msg, ButtonType.OK).show();
-    }
-
-    private void showError(String title, String msg) {
-        new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK).show();
+    private File chooseSaveFile() {
+        FileChooser fc = new FileChooser();
+        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter(
+                "CSV", "*" + AppConstants.CSV_EXTENSION));
+        return fc.showSaveDialog(null);
     }
 
     public static void main(String[] args) {

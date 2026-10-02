@@ -1,11 +1,7 @@
 package PartyModel;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
-
-//Базовая редактируемая партия.
-//Реализует PartyModel.Editable: может быть создана через «Добавить» и изменена через «Изменить».
 
 public class RegularParty extends Party implements Editable {
 
@@ -13,15 +9,8 @@ public class RegularParty extends Party implements Editable {
         super(article, name, quantity, cell, date);
     }
 
-    @Override
-    public String getTypeCode() {
-        return "REGULAR";
-    }
-
-    @Override
-    public String getTypeDisplayName() {
-        return "Партия";
-    }
+    @Override public String getTypeCode()         { return PartyType.REGULAR.getCode(); }
+    @Override public String getTypeDisplayName()  { return PartyType.REGULAR.getDisplayName(); }
 
     @Override
     public String[] toCsvRow() {
@@ -30,7 +19,6 @@ public class RegularParty extends Party implements Editable {
 
     @Override
     public List<String> validate() {
-        List<String> errors = new ArrayList<>(super.validate()); // базовые проверки
-        return errors;
+        return super.validate();
     }
 }

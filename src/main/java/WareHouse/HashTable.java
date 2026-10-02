@@ -1,73 +1,36 @@
 package WareHouse;
 
+import PartyModel.AppConstants;
+
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Хеш-таблица с открытой адресацией (линейное пробирование).
- * Отслеживает количество проб для операций put/get/delete
- * и хранит накопленную статистику для расчёта средних значений.
- */
 public class HashTable<K, V> {
 
-    private static final int DEFAULT_CAPACITY = 16;
-    private static final double LOAD_FACTOR_THRESHOLD = 0.7;
+    private static final int    DEFAULT_CAPACITY         = AppConstants.HASH_INITIAL_CAPACITY;
+    private static final double LOAD_FACTOR_THRESHOLD    = AppConstants.HASH_LOAD_FACTOR_THRESHOLD;
 
     private Object[] keys;
     private Object[] values;
-    private boolean[] deleted; // «могилы» после удаления (для корректного пробирования)
+    private boolean[] deleted;
     private int size;
 
-    private long putProbesTotal;
-    private long putOps;
-    private long getProbesTotal;
-    private long getOps;
-    private long deleteProbesTotal;
-    private long deleteOps;
+    private long putProbesTotal;    private long putOps;
+    private long getProbesTotal;    private long getOps;
+    private long deleteProbesTotal; private long deleteOps;
 
-    public HashTable() {
-        this(DEFAULT_CAPACITY);
-    }
+    public HashTable() { this(DEFAULT_CAPACITY); }
 
     public HashTable(int capacity) {
         if (capacity < 1) capacity = DEFAULT_CAPACITY;
         keys = new Object[capacity];
         values = new Object[capacity];
         deleted = new boolean[capacity];
-        size = 0;
     }
 
-    public static final class PutResult {
-        public final boolean isNew;
-        public final int probes;
-
-        public PutResult(boolean isNew, int probes) {
-            this.isNew = isNew;
-            this.probes = probes;
-        }
-    }
-
-    public static final class GetResult<V> {
-        public final boolean found;
-        public final V value;
-        public final int probes;
-
-        public GetResult(boolean found, V value, int probes) {
-            this.found = found;
-            this.value = value;
-            this.probes = probes;
-        }
-    }
-
-    public static final class DeleteResult {
-        public final boolean found;
-        public final int probes;
-
-        public DeleteResult(boolean found, int probes) {
-            this.found = found;
-            this.probes = probes;
-        }
-    }
+    public record PutResult(boolean isNew, int probes) {}
+    public record GetResult<V>(boolean found, V value, int probes) {}
+    public record DeleteResult(boolean found, int probes) {}
 
     private int indexFor(Object key, int capacity) {
         int h = key.hashCode();
@@ -105,14 +68,12 @@ public class HashTable<K, V> {
                 continue;
             }
             if (keys[pos].equals(key)) {
-                values[pos] = value; // обновление значения по существующему ключу
+                values[pos] = value;
                 putProbesTotal += probes;
                 putOps++;
                 return new PutResult(false, probes);
             }
         }
-
-        // Теоретически недостижимо благодаря упреждающему resize, но на всякий случай:
         resize(capacity * 2);
         return put(key, value);
     }
@@ -129,18 +90,15 @@ public class HashTable<K, V> {
             int pos = (idx + i) % capacity;
 
             if (keys[pos] == null && !deleted[pos]) {
-                getProbesTotal += probes;
-                getOps++;
+                getProbesTotal += probes; getOps++;
                 return new GetResult<>(false, null, probes);
             }
             if (!deleted[pos] && keys[pos].equals(key)) {
-                getProbesTotal += probes;
-                getOps++;
+                getProbesTotal += probes; getOps++;
                 return new GetResult<>(true, (V) values[pos], probes);
             }
         }
-        getProbesTotal += probes;
-        getOps++;
+        getProbesTotal += probes; getOps++;
         return new GetResult<>(false, null, probes);
     }
 
@@ -155,8 +113,7 @@ public class HashTable<K, V> {
             int pos = (idx + i) % capacity;
 
             if (keys[pos] == null && !deleted[pos]) {
-                deleteProbesTotal += probes;
-                deleteOps++;
+                deleteProbesTotal += probes; deleteOps++;
                 return new DeleteResult(false, probes);
             }
             if (!deleted[pos] && keys[pos].equals(key)) {
@@ -164,19 +121,15 @@ public class HashTable<K, V> {
                 values[pos] = null;
                 deleted[pos] = true;
                 size--;
-                deleteProbesTotal += probes;
-                deleteOps++;
+                deleteProbesTotal += probes; deleteOps++;
                 return new DeleteResult(true, probes);
             }
         }
-        deleteProbesTotal += probes;
-        deleteOps++;
+        deleteProbesTotal += probes; deleteOps++;
         return new DeleteResult(false, probes);
     }
 
-    public boolean containsKey(K key) {
-        return get(key).found;
-    }
+    public boolean containsKey(K key) { return get(key).found(); }
 
     @SuppressWarnings("unchecked")
     private void resize(int newCapacity) {
@@ -189,56 +142,31 @@ public class HashTable<K, V> {
         size = 0;
 
         for (int i = 0; i < oldKeys.length; i++) {
-            if (oldKeys[i] != null) {
-                put((K) oldKeys[i], (V) oldValues[i]);
-            }
+            if (oldKeys[i] != null) put((K) oldKeys[i], (V) oldValues[i]);
         }
     }
 
-    public int capacity() {
-        return keys.length;
-    }
-
-    public int size() {
-        return size;
-    }
-
-    public double loadFactor() {
-        return capacity() == 0 ? 0 : (double) size / capacity();
-    }
+    public int capacity()   { return keys.length; }
+    public int size()       { return size; }
+    public double loadFactor() { return capacity() == 0 ? 0 : (double) size / capacity(); }
 
     public void clear() {
         keys = new Object[DEFAULT_CAPACITY];
         values = new Object[DEFAULT_CAPACITY];
         deleted = new boolean[DEFAULT_CAPACITY];
         size = 0;
-        putProbesTotal = 0;
-        putOps = 0;
-        getProbesTotal = 0;
-        getOps = 0;
-        deleteProbesTotal = 0;
-        deleteOps = 0;
+        putProbesTotal = putOps = getProbesTotal = getOps = deleteProbesTotal = deleteOps = 0;
     }
 
-    public double avgPutProbes() {
-        return putOps == 0 ? 0 : (double) putProbesTotal / putOps;
-    }
-
-    public double avgGetProbes() {
-        return getOps == 0 ? 0 : (double) getProbesTotal / getOps;
-    }
-
-    public double avgDeleteProbes() {
-        return deleteOps == 0 ? 0 : (double) deleteProbesTotal / deleteOps;
-    }
+    public double avgPutProbes()    { return putOps    == 0 ? 0 : (double) putProbesTotal    / putOps; }
+    public double avgGetProbes()    { return getOps    == 0 ? 0 : (double) getProbesTotal    / getOps; }
+    public double avgDeleteProbes() { return deleteOps == 0 ? 0 : (double) deleteProbesTotal / deleteOps; }
 
     @SuppressWarnings("unchecked")
     public List<V> values() {
         List<V> result = new ArrayList<>();
         for (int i = 0; i < keys.length; i++) {
-            if (keys[i] != null && !deleted[i]) {
-                result.add((V) values[i]);
-            }
+            if (keys[i] != null && !deleted[i]) result.add((V) values[i]);
         }
         return result;
     }
