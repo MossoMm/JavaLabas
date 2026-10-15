@@ -3,6 +3,10 @@ package PartyModel;
 import CSV.CSVLoadException;
 import WareHouse.WareHouse;
 import WareHouse.WarehouseService;
+import WareHouse.WarehouseService.LoadSummary;
+import WareHouse.WarehouseService.SaveResult;
+import WareHouse.WarehouseService.AddResult;
+import WareHouse.WarehouseService.DeleteOutcome;
 import javafx.application.Application;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -163,7 +167,7 @@ public class GUI extends Application {
 
         setBusy(true);
         Task<WarehouseService.LoadSummary> task = new Task<>() {
-            @Override protected WareHouse.WarehouseService.LoadSummary call() throws IOException {
+            @Override protected LoadSummary call() throws IOException {
                 return service.loadFromFile(file);
             }
         };
@@ -181,7 +185,7 @@ public class GUI extends Application {
         new Thread(task, "csv-load").start();
     }
 
-    private void reportLoad(WareHouse.WarehouseService.LoadSummary s) {
+    private void reportLoad(LoadSummary s) {
         String brief = "Загружено: " + s.loaded()
                 + ", дубликатов: " + s.duplicates()
                 + ", ошибок: " + s.errors().size();
@@ -206,7 +210,7 @@ public class GUI extends Application {
         if (file == null) return;
 
         try {
-            WareHouse.WarehouseService.SaveResult r = service.saveToFile(file);
+            SaveResult r = service.saveToFile(file);
             statusLabel.setText("Сохранено: " + r.saved());
             PartyDialogs.showInfo("Сохранение", "Успешно сохранено: " + r.saved());
         } catch (IOException ex) {
@@ -220,7 +224,7 @@ public class GUI extends Application {
         PartyDialogs.chooseAddType().ifPresent(importMode -> {
             String title = importMode ? "Добавить импортную" : "Добавить партию";
             PartyDialogs.showPartyForm(title, null, importMode).ifPresent(p -> {
-                WareHouse.WarehouseService.AddResult r = service.addParty(p);
+                AddResult r = service.addParty(p);
                 if (r.wasDuplicate()) {
                     PartyDialogs.showError("Дубликат",
                             String.format(AppConstants.Validation.DUPLICATE_MSG_FORMAT, p.getArticle()));
@@ -242,7 +246,7 @@ public class GUI extends Application {
         boolean importMode = p instanceof ImportParty;
         String title = importMode ? "Изменить импортную" : "Изменить партию";
         PartyDialogs.showPartyForm(title, p, importMode).ifPresent(updated -> {
-            WareHouse.WarehouseService.AddResult r = service.updateParty(updated);
+            AddResult r = service.updateParty(updated);
             refresh();
             statusLabel.setText("Изменено: " + updated.getArticle() + " | пробы: " + r.probes());
         });
@@ -252,7 +256,7 @@ public class GUI extends Application {
         Party p = table.getSelectionModel().getSelectedItem();
         if (p == null) return;
         if (!PartyDialogs.confirmDelete(p.getArticle())) return;
-        WareHouse.WarehouseService.DeleteOutcome o = service.deleteByArticle(p.getArticle());
+        DeleteOutcome o = service.deleteByArticle(p.getArticle());
         refresh();
         statusLabel.setText("Удалено: " + o.article() + " | пробы: " + o.probes());
     }
