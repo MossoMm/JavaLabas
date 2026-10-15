@@ -12,6 +12,6 @@ public final class Launcher {
     private Launcher() {}
 
     public static void main(String[] args) {
-        Application.launch(Main.class, args);
+        Application.launch(GUI.class, args);
     }
 }
