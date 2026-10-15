@@ -2,11 +2,6 @@ package PartyModel;
 
 import javafx.application.Application;
 
-/**
- * Точка входа для запуска из «толстого» JAR.
- *
-
- */
 public final class Launcher {
 
     private Launcher() {}
