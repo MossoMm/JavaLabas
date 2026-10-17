@@ -1,5 +1,6 @@
 package PartyModel;
 
+import GUI.GUI;
 import javafx.application.Application;
 
 public final class Launcher {

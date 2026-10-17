@@ -24,13 +24,11 @@ import java.util.List;
  *   ARCHIVE,article,name,quantity,cell,date
  *   IMPORT ,article,name,quantity,cell,date,country,customsCode
  *
- * Битые строки НЕ прерывают загрузку — попадают в LoadResult.errors().
+ * Битые строки попадают в LoadResult.errors().
  */
 public final class CSVUtil {
 
     private CSVUtil() { }
-
-    /** Сводка загрузки. */
     public record LoadResult(
             List<Party> parties,
             List<CSVLoadException> errors,
@@ -164,7 +162,6 @@ public final class CSVUtil {
         }
     }
 
-    // ---------- Низкоуровневый CSV ----------
 
     static String[] parseLine(String line) {
         List<String> result = new ArrayList<>();
