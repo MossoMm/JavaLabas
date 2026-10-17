@@ -7,10 +7,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.TextAlignment;
 
-/**
- * Визуализатор хеш-таблицы.
- * Рисует внутреннее устройство HashTable на JavaFX Canvas.
- */
+
 public class HashTableVisual {
 
     private final Canvas canvas;
@@ -119,7 +116,7 @@ public class HashTableVisual {
             return key.length() > 10 ? key.substring(0, 9) + "…" : key;
         }
         if (snapshot.deleted[idx]) {
-            return "☠️";
+            return "x";
         }
         return "—";
     }
@@ -159,7 +156,7 @@ public class HashTableVisual {
         g.fillText("Посещённая", x + 20, y + 12);
     }
 
-    /** Очистить canvas */
+
     public void clear() {
         canvas.getGraphicsContext2D().clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
     }
