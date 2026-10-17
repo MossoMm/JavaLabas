@@ -2,6 +2,7 @@ package GUI;
 
 import CSV.CSVLoadException;
 import PartyModel.*;
+import GUI.HashTableVisual;
 import WareHouse.WareHouse;
 import WareHouse.WarehouseService;
 import WareHouse.WarehouseService.LoadSummary;
@@ -14,6 +15,7 @@ import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
+import javafx.scene.canvas.Canvas;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.BorderPane;
@@ -37,13 +39,24 @@ public class GUI extends Application {
     private Button loadButton, saveButton, addButton, editButton, deleteButton, refreshButton;
     private Label statusLabel, statsLabel;
 
+    private Canvas visualCanvas;
+    private HashTableVisual visualizer;
+    private Task<Void> generateTask;
+    private Button generateButton, cancelGenerateButton;
     @Override
     public void start(Stage stage) {
         stage.setTitle("Склад — учёт партий");
         BorderPane root = new BorderPane();
 
         root.setTop(buildToolbar());
-        root.setCenter(buildTable());
+
+        // Размещаем таблицу и визуализатор вертикально
+        javafx.scene.layout.VBox centerBox = new javafx.scene.layout.VBox(5);
+        centerBox.getChildren().addAll(buildTable(), buildVisualizer());
+        // Растягиваем таблицу, чтобы визуализатор был снизу фиксированного размера
+        javafx.scene.layout.VBox.setVgrow(table, Priority.ALWAYS);
+
+        root.setCenter(centerBox);
         root.setBottom(buildStatusBar());
 
         stage.setScene(new Scene(root, AppConstants.WINDOW_WIDTH, AppConstants.WINDOW_HEIGHT));
@@ -73,7 +86,7 @@ public class GUI extends Application {
                 addButton, editButton, deleteButton, new Separator(), refreshButton);
     }
 
-    private TableView<Party> buildTable() {
+    private synchronized TableView<Party> buildTable() {
         table = new TableView<>(partyList);
         table.getColumns().addAll(
                 column("Артикул", "article",         AppConstants.COL_ARTICLE),
@@ -251,6 +264,7 @@ public class GUI extends Application {
             refresh();
             statusLabel.setText("Изменено: " + updated.getArticle() + " | пробы: " + r.probes());
         });
+
     }
 
     private void deleteParty() {
@@ -276,5 +290,22 @@ public class GUI extends Application {
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter(
                 "CSV", "*" + AppConstants.CSV_EXTENSION));
         return fc.showSaveDialog(null);
+    }
+
+    private javafx.scene.canvas.Canvas buildVisualizer() {
+
+        Canvas canvas = new javafx.scene.canvas.Canvas(AppConstants.WINDOW_WIDTH, 250);
+
+
+        this.visualizer = new HashTableVisual(canvas);
+        this.visualCanvas = canvas;
+
+
+        canvas.widthProperty().bind(((javafx.scene.layout.Region) canvas.getParent()).widthProperty());
+
+
+        this.visualizer.draw(service.getSnapshot(), new int[0]);
+
+        return canvas;
     }
 }

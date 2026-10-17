@@ -34,7 +34,9 @@ public class WareHouse {
     public boolean contains(String article) {
         return table.containsKey(article);
     }
-
+    public HashTable.TableSnapshot getSnapshot() {
+        return table.getSnapshot();
+    }
     public Collection<Party> all() {
         return table.values();
     }

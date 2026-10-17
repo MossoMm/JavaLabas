@@ -81,7 +81,9 @@ public class WarehouseService {
         var r = warehouse.delete(article);
         return new DeleteOutcome(article, r.found(), r.probes());
     }
-
+    public HashTable.TableSnapshot getSnapshot() {
+        return warehouse.getSnapshot();
+    }
     public List<Party> all()  { return new ArrayList<>(warehouse.all()); }
     public int size()         { return warehouse.size(); }
     public int capacity()     { return warehouse.capacity(); }
