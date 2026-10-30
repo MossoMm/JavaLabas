@@ -1,0 +1,21 @@
+public abstract class Party {
+    public static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
+ 
+    private String article;
+    private String name;
+    private int quantity;
+    private String cell;
+    private LocalDate date;
+ 
+    protected Party(String article, String name, int quantity, String cell, LocalDate date) { ... }
+ 
+    public abstract String getTypeCode();
+    public abstract String getTypeDisplayName();
+    public abstract String[] toCsvRow();
+ 
+    protected List<String> validate() { /* базовые проверки полей */ }
+}
+ 
+public class RegularParty extends Party implements Editable { ... }
+public class ImportParty  extends Party implements Editable { ... }
+public final class ArchiveParty extends Party { /* без implements Editable */ }
