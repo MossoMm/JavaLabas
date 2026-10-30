@@ -14,11 +14,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <javafx.version>21.0.2</javafx.version>
-
-
-        <main.class>PartyModel.Launcher</main.class>
-
-
+        <main.class>PartyModel.Launcher</main.class> <!-- См. важное примечание ниже! -->
         <shaded.jar.name>WarehouseApp.jar</shaded.jar.name>
     </properties>
 
@@ -52,8 +48,9 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <source>25</source>
-                    <target>25</target>
+                    <!-- ИСПРАВЛЕНО: было 25, стало 17 -->
+                    <source>17</source>
+                    <target>17</target>
                 </configuration>
             </plugin>
 
@@ -80,15 +77,11 @@
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
-
-
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>${main.class}</mainClass>
                                 </transformer>
                             </transformers>
-
-
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
