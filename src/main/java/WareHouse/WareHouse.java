@@ -37,7 +37,7 @@ public class WareHouse {
     public HashTable.TableSnapshot getSnapshot() {
         return table.getSnapshot();
     }
-    public Collection<Party> all() {
+    public Party[] all() {
         return table.values();
     }
 

@@ -14,6 +14,7 @@ import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
+import javafx.scene.canvas.Canvas;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.BorderPane;
@@ -37,19 +38,35 @@ public class GUI extends Application {
     private Button loadButton, saveButton, addButton, editButton, deleteButton, refreshButton;
     private Label statusLabel, statsLabel;
 
+    /** HashTable Visual **/
+    private Canvas visualCanvas;
+    private HashTableVisual tableVisualiser;
+    private Task<Void> generateTask;
+    private void drawVisualiser(int[] probedIndices)
+    {
+        if (tableVisualiser == null) return;
+        tableVisualiser.draw(service.getSnapshot(), probedIndices != null ? probedIndices : new int[0]);
+
+    }
     @Override
     public void start(Stage stage) {
         stage.setTitle("Склад — учёт партий");
         BorderPane root = new BorderPane();
 
         root.setTop(buildToolbar());
-        root.setCenter(buildTable());
+
+        javafx.scene.layout.VBox centerBox = new javafx.scene.layout.VBox(5);
+        centerBox.getChildren().addAll(buildTable(), buildVisualizer());
+        javafx.scene.layout.VBox.setVgrow(table, javafx.scene.layout.Priority.ALWAYS);
+
+        root.setCenter(centerBox);
         root.setBottom(buildStatusBar());
 
         stage.setScene(new Scene(root, AppConstants.WINDOW_WIDTH, AppConstants.WINDOW_HEIGHT));
         stage.show();
 
         refresh();
+
     }
 
     // Сборка UI
@@ -111,7 +128,13 @@ public class GUI extends Application {
         bar.setPadding(new Insets(4));
         return bar;
     }
-
+    private Canvas buildVisualizer()
+    {
+        visualCanvas = new Canvas(AppConstants.WINDOW_WIDTH, 250);
+        tableVisualiser = new HashTableVisual(visualCanvas);
+        drawVisualiser(new int[0]);
+        return visualCanvas;
+    }
     private static String extraInfo(Party p) {
         if (p instanceof ImportParty ip) return "страна=" + ip.getCountry();
         if (p instanceof Editable)       return "—";
@@ -175,6 +198,7 @@ public class GUI extends Application {
         task.setOnSucceeded(e -> {
             setBusy(false);
             refresh();
+            drawVisualiser(new int[0]);
             reportLoad(task.getValue());
         });
         task.setOnFailed(e -> {
@@ -232,6 +256,7 @@ public class GUI extends Application {
                     return;
                 }
                 refresh();
+                drawVisualiser(r.probedIndices());
                 statusLabel.setText("Добавлено: " + p.getArticle() + " | пробы: " + r.probes());
             });
         });
@@ -249,6 +274,7 @@ public class GUI extends Application {
         PartyDialogs.showPartyForm(title, p, importMode).ifPresent(updated -> {
             AddResult r = service.updateParty(updated);
             refresh();
+            drawVisualiser(r.probedIndices());
             statusLabel.setText("Изменено: " + updated.getArticle() + " | пробы: " + r.probes());
         });
     }
@@ -259,6 +285,7 @@ public class GUI extends Application {
         if (!PartyDialogs.confirmDelete(p.getArticle())) return;
         DeleteOutcome o = service.deleteByArticle(p.getArticle());
         refresh();
+        drawVisualiser(o.probedIndices());
         statusLabel.setText("Удалено: " + o.article() + " | пробы: " + o.probes());
     }
 

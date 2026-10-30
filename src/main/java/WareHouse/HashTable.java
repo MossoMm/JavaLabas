@@ -175,10 +175,11 @@ public class HashTable<K, V> {
     public synchronized double avgDeleteProbes() { return deleteOps == 0 ? 0 : (double) deleteProbesTotal / deleteOps; }
 
     @SuppressWarnings("unchecked")
-    public synchronized List<V> values() {
-        List<V> result = new ArrayList<>();
+    public synchronized V[] values() {
+        V[] result =(V[]) new Object[size];
+        int index = 0;
         for (int i = 0; i < keys.length; i++) {
-            if (keys[i] != null && !deleted[i]) result.add((V) values[i]);
+            if (keys[i] != null && !deleted[i]) result[index++] = (V) values[i];
         }
         return result;
     }

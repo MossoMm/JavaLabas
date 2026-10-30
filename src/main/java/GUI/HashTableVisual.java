@@ -17,7 +17,7 @@ public class HashTableVisual {
     private static final Color COLOR_OCCUPIED  = Color.web("#10b981");  // зелёный
     private static final Color COLOR_TOMBSTONE = Color.web("#6b7280");  // серый
     private static final Color COLOR_PROBED    = Color.web("#fbbf24");  // жёлтый
-    private static final Color COLOR_TEXT      = Color.WHITE;
+    private static final Color COLOR_TEXT      = Color.BLACK;
     private static final Color COLOR_INDEX     = Color.web("#9ca3af");
 
     private static final double CELL_HEIGHT = 60;

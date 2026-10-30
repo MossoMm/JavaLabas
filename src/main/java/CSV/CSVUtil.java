@@ -71,7 +71,7 @@ public final class CSVUtil {
         return new LoadResult(parties, errors, totalLines);
     }
 
-    public static void save(String filePath, List<Party> parties) throws IOException {
+    public static void save(String filePath, Party[] parties) throws IOException {
         Path path = Paths.get(filePath);
         try (BufferedWriter writer = Files.newBufferedWriter(path)) {
             for (Party p : parties) {

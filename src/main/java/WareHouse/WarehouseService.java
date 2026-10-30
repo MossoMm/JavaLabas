@@ -37,9 +37,11 @@ public class WarehouseService {
         }
     }
 
-    public record AddResult(Party party, int probes, boolean wasDuplicate) {}
+    // Добавлено поле probedIndices для передачи данных о визуализации в GUI
+    public record AddResult(Party party, int probes, int[] probedIndices, boolean wasDuplicate) {}
     public record SaveResult(int saved, String filePath) {}
-    public record DeleteOutcome(String article, boolean deleted, int probes) {}
+    // Добавлено поле probedIndices для передачи данных о визуализации в GUI
+    public record DeleteOutcome(String article, boolean deleted, int probes, int[] probedIndices) {}
 
     public LoadSummary loadFromFile(File file) throws IOException {
         // Сначала грузим, только потом трогаем склад — если файл битый,
@@ -60,31 +62,44 @@ public class WarehouseService {
 
     public SaveResult saveToFile(File file) throws IOException {
         String path = ensureCsvExtension(file.getAbsolutePath());
-        CSVUtil.save(path, new ArrayList<>(warehouse.all()));
+        CSVUtil.save(path, warehouse.all());
         return new SaveResult(warehouse.size(), path);
     }
 
     public AddResult addParty(Party party) {
-        if (warehouse.get(party.getArticle()).found()) {
-            return new AddResult(party, 0, true);
+        // Проверяем наличие перед вставкой.
+        // check — это прокси-объект из WareHouse, содержащий (found, value, probes, probedIndices)
+        var check = warehouse.get(party.getArticle());
+        if (check.found()) {
+            // Если дубликат, возвращаем пробы операции поиска, которая этот дубликат нашла
+            return new AddResult(party, check.probes(), check.probedIndices(), true);
         }
+
+        // Вставка новой партии.
+        // r — это прокси-объект PutResultProxy из WareHouse, пробрасывающий данные из HashTable
         var r = warehouse.put(party);
-        return new AddResult(party, r.probes(), false);
+        return new AddResult(party, r.probes(), r.probedIndices(), false);
     }
 
     public AddResult updateParty(Party party) {
+        // Обновление через перезапись.
+        // r — прокси-объект с данными о пробах из HashTable через WareHouse
         var r = warehouse.put(party);
-        return new AddResult(party, r.probes(), false);
+        return new AddResult(party, r.probes(), r.probedIndices(), false);
     }
 
     public DeleteOutcome deleteByArticle(String article) {
+        // Удаление.
+        // r — прокси-объект DeleteResultProxy из WareHouse, содержащий (found, probes, probedIndices)
         var r = warehouse.delete(article);
-        return new DeleteOutcome(article, r.found(), r.probes());
+        return new DeleteOutcome(article, r.found(), r.probes(), r.probedIndices());
     }
+
     public HashTable.TableSnapshot getSnapshot() {
         return warehouse.getSnapshot();
     }
-    public List<Party> all()  { return new ArrayList<>(warehouse.all()); }
+
+    public Party[] all() { return warehouse.all(); }
     public int size()         { return warehouse.size(); }
     public int capacity()     { return warehouse.capacity(); }
     public double loadFactor(){ return warehouse.loadFactor(); }
