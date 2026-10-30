@@ -1,6 +1,7 @@
 package GUI;
 
 import CSV.CSVLoadException;
+import CSV.DataGenerator;
 import PartyModel.*;
 import WareHouse.WareHouse;
 import WareHouse.WarehouseService;
@@ -42,6 +43,9 @@ public class GUI extends Application {
     private Canvas visualCanvas;
     private HashTableVisual tableVisualiser;
     private Task<Void> generateTask;
+    //** Data Generation Fields**/
+    private Button generateButton;
+    private Button cancelGenerateButton;
     private void drawVisualiser(int[] probedIndices)
     {
         if (tableVisualiser == null) return;
@@ -85,9 +89,20 @@ public class GUI extends Application {
         editButton   .setOnAction(e -> editParty());
         deleteButton .setOnAction(e -> deleteParty());
         refreshButton.setOnAction(e -> refresh());
+        generateButton = new Button("Генерировать 10 000");
+        cancelGenerateButton = new Button("Отмена");
+        cancelGenerateButton.setDisable(true);
+        cancelGenerateButton.setStyle("-fx-base: #ff4444; -fx-text-fill: white;");
+
+        generateButton.setOnAction(e -> startGeneration());
+        cancelGenerateButton.setOnAction(e -> {
+            if (generateTask != null) generateTask.cancel();
+        });
 
         return new ToolBar(loadButton, saveButton, new Separator(),
-                addButton, editButton, deleteButton, new Separator(), refreshButton);
+                addButton, editButton, deleteButton, new Separator(),
+                refreshButton, new Separator(),
+                generateButton, cancelGenerateButton);
     }
 
     private TableView<Party> buildTable() {
@@ -303,5 +318,41 @@ public class GUI extends Application {
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter(
                 "CSV", "*" + AppConstants.CSV_EXTENSION));
         return fc.showSaveDialog(null);
+    }
+    /** Data generation **/
+    private void startGeneration() {
+        generateButton.setDisable(true);
+        cancelGenerateButton.setDisable(false);
+        statusLabel.setText("Генерация...");
+
+        generateTask = new Task<>() {
+            @Override
+            protected Void call() {
+                int count = 10_000;
+                for (int i = 0; i < count; i++) {
+
+                    if (isCancelled()) break;
+
+                    service.addParty(DataGenerator.generateRandomParty(i));
+                }
+                return null;
+            }
+        };
+
+        generateTask.setOnSucceeded(e -> {
+            generateButton.setDisable(false);
+            cancelGenerateButton.setDisable(true);
+            statusLabel.setText("Готово: 10 000 записей");
+            refresh();
+        });
+
+        generateTask.setOnCancelled(e -> {
+            generateButton.setDisable(false);
+            cancelGenerateButton.setDisable(true);
+            statusLabel.setText("Отменено. Записей: " + service.size());
+            refresh();
+        });
+
+        new Thread(generateTask, "gen-thread").start();
     }
 }
