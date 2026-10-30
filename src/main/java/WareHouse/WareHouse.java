@@ -38,7 +38,10 @@ public class WareHouse {
         return table.getSnapshot();
     }
     public Party[] all() {
-        return table.values();
+        Object[] raw = table.values();
+        Party[] result = new Party[raw.length];
+        System.arraycopy(raw, 0, result, 0, raw.length);
+        return result;
     }
 
     public void clear() {
